@@ -30,6 +30,7 @@ import ast
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -371,6 +372,89 @@ PATCHES: dict[str, list[tuple[str, str, str]]] = {
     # upstream already treats the probe as optional -- the whole block sits under a
     # bare `except Exception: pass` -- so it is dropped rather than carried.
 """,
+        ),
+    ],
+    "hermes_cli/lifecycle.py": [
+        (
+            "a missing first-party observer is this core's normal state, not a failure",
+            # Anchors are written in *rewritten* form: PATCHES run after the import
+            # rewriter, so `hermes_cli.observability` is already `hermes_core.runtime.
+            # observability` by the time this is matched.
+            """def _observe(hook_name: str, **kwargs: Any) -> None:
+    try:
+        from hermes_core.runtime.observability import observe_lifecycle
+
+        observe_lifecycle(hook_name, **kwargs)
+    except Exception:
+        logger.warning("Built-in observability hook failed", exc_info=True)
+""",
+            '''#: Set once the first import settles, so the absence is decided one time rather than
+#: re-raised on every hook.
+_OBSERVER_MISSING = False
+
+
+def _first_party_observer(name: str):
+    """The named function from ``hermes_core.runtime.observability``, or ``None``.
+
+    Upstream's observability package forwards lifecycle events to Nous Portal's relay
+    telemetry, which this core strips deliberately -- so there is no observer here, and
+    a host that wants one drops in its own ``hermes_core/runtime/observability.py``
+    exposing ``observe_lifecycle`` and ``handles_hook``.
+
+    Absence therefore has to be *expected*, not exceptional. Upstream wraps both call
+    sites in a bare ``except Exception`` that logs a warning with a full traceback, which
+    here fired **21 times with a stack trace in a single turn that called no tools** --
+    enough to teach anyone reading the logs to ignore this logger, which is precisely
+    where a real observer failure would appear. An observer that exists and raises is
+    still warned about, because that one is a genuine fault.
+    """
+    global _OBSERVER_MISSING
+    if _OBSERVER_MISSING:
+        return None
+    try:
+        module = importlib.import_module("hermes_core.runtime.observability")
+    except ImportError:
+        _OBSERVER_MISSING = True
+        return None
+    hook = getattr(module, name, None)
+    if hook is None:
+        _OBSERVER_MISSING = True
+    return hook
+
+
+def _observe(hook_name: str, **kwargs: Any) -> None:
+    observe_lifecycle = _first_party_observer("observe_lifecycle")
+    if observe_lifecycle is None:
+        return
+    try:
+        observe_lifecycle(hook_name, **kwargs)
+    except Exception:
+        logger.warning("Built-in observability hook failed", exc_info=True)
+''',
+        ),
+        (
+            "same for the hook-inspection path",
+            """    try:
+        from hermes_core.runtime.observability import handles_hook
+
+        if handles_hook(hook_name):
+            return True
+    except Exception:
+        logger.warning("Unable to inspect built-in observability hooks", exc_info=True)
+""",
+            """    handles_hook = _first_party_observer("handles_hook")
+    if handles_hook is not None:
+        try:
+            if handles_hook(hook_name):
+                return True
+        except Exception:
+            logger.warning("Unable to inspect built-in observability hooks", exc_info=True)
+""",
+        ),
+        (
+            "importlib, for the observer probe above",
+            "import logging\nfrom typing import Any, List\n",
+            "import importlib\nimport logging\nfrom typing import Any, List\n",
         ),
     ],
     "tools/daemon_pool.py": [
@@ -1093,6 +1177,27 @@ def prune_orphans(*, dry_run: bool = False) -> list[str]:
         removed.append(rel)
         if not dry_run:
             path.unlink()
+
+    # A directory this left empty is not inert: Python treats one with no `__init__.py`
+    # as a *namespace package*, so `import hermes_core.runtime.observability` succeeds
+    # and yields a module with nothing in it. The failure that follows is then
+    # `ImportError: cannot import name X ... (unknown location)` rather than
+    # `ModuleNotFoundError` -- which is worse than either, because callers guarding an
+    # optional import catch the second and are surprised by the first.
+    #
+    # `runtime/observability` did exactly that: every lifecycle hook logged a warning
+    # with a full traceback, 21 of them in one turn that called no tools, training a
+    # reader to ignore the one logger a real observer failure would use.
+    for directory in sorted((CORE / "hermes_core").rglob("*"), reverse=True):
+        if not directory.is_dir() or directory.name == "__pycache__":
+            continue
+        if directory.relative_to(CORE / "hermes_core").parts[0] in HANDWRITTEN_DIRS:
+            continue
+        if any(child.name != "__pycache__" for child in directory.iterdir()):
+            continue
+        removed.append(directory.relative_to(CORE / "hermes_core").as_posix() + "/")
+        if not dry_run:
+            shutil.rmtree(directory)
 
     return removed
 
