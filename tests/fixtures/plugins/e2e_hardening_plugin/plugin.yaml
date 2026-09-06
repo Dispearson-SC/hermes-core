@@ -1,0 +1,8 @@
+name: e2e_hardening_plugin
+version: "0.1.0"
+description: "Adversarial fixture for a real turn: a tool that raises, a tool that returns a non-serializable result, and a post_tool_call hook observing both."
+provides_tools:
+  - fails_tool
+  - returns_bad_shape_tool
+provides_hooks:
+  - post_tool_call

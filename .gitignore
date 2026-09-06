@@ -1,0 +1,18 @@
+# Secrets. The core reads provider keys from here; never commit them.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Test and tooling scratch
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/

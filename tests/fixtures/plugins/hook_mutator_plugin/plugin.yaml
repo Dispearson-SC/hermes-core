@@ -1,0 +1,5 @@
+name: hook_mutator_plugin
+version: "0.1.0"
+description: "Adversarial fixture: one hook mutates the payload, a second hook records what it received."
+provides_hooks:
+  - post_tool_call

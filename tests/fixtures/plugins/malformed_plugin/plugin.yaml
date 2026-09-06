@@ -1,0 +1,3 @@
+name: malformed_plugin
+description: [this is not valid yaml
+  because the flow sequence is never closed

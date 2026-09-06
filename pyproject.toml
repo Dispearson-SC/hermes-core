@@ -1,0 +1,59 @@
+[project]
+name = "hermes-core"
+version = "0.0.1"
+description = "The agent intelligence of Hermes Agent, extracted as an embeddable library."
+# Upper bound raised to <3.15 only after the suite was run on 3.14 -- not by editing the
+# number. It found a real break: `tools/daemon_pool.py` overrides a private CPython method
+# and 3.14 changed the private worker contract under it, so every tool call in the core
+# failed. The bound stays closed rather than open-ended because that is the class of
+# breakage this pin exists to catch, and it is only ever moved by measuring.
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    # The chat-completions transport speaks the OpenAI wire format and uses the SDK's
+    # types. It is the only hard dependency the core has acquired so far; everything
+    # else that has moved across runs on the standard library.
+    "openai>=1.40,<2",
+    # Lifted utility and credential modules read YAML.
+    "pyyaml>=6,<7",
+    # Log rotation that is safe when several processes share a file -- a real case for
+    # a core embedded in a multi-worker service.
+    "concurrent-log-handler>=0.9,<1",
+    # Reads the workspace .env, where hosts commonly keep provider keys.
+    "python-dotenv>=1,<2",
+    # Model-metadata lookups against a custom endpoint's /v1/models.
+    "requests>=2.31,<3",
+]
+
+# Upstream pins its dependencies exactly and pushes everything platform-, provider-
+# and messaging-specific into optional extras. This core starts from zero: nothing is
+# a hard dependency until a moved module actually needs it, so the closure stays
+# visible instead of accumulating quietly.
+
+[project.optional-dependencies]
+# Providers that speak their own SDK rather than the OpenAI wire format. Optional so
+# a host talking only to OpenAI-compatible endpoints does not carry them.
+anthropic = ["anthropic>=0.39,<1"]
+
+# The MCP client (hermes_core/tools/mcp_tool*.py) is a no-op without this: every entry
+# point probes `importlib.util.find_spec("mcp")` and skips discovery when it's absent, so a
+# host that never configures `mcp_servers` does not carry it.
+mcp = ["mcp>=1.4,<3"]
+
+dev = [
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.23,<1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["hermes_core", "hermes_core.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: spawns a real subprocess (npx/uvx) MCP server; skips gracefully when its prerequisites are absent",
+]

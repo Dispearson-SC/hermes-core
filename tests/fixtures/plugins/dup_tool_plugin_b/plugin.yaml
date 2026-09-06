@@ -1,0 +1,5 @@
+name: dup_tool_plugin_b
+version: "0.1.0"
+description: "Adversarial fixture: also registers 'shared_tool' (loads after dup_tool_plugin_a)."
+provides_tools:
+  - shared_tool

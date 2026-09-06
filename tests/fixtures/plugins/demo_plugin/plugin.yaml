@@ -1,0 +1,7 @@
+name: demo_plugin
+version: "0.1.0"
+description: "Test fixture proving register_tool + register_hook against hermes_core."
+provides_tools:
+  - demo_greet
+provides_hooks:
+  - post_tool_call

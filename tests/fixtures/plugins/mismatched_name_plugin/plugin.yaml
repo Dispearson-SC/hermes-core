@@ -1,0 +1,5 @@
+name: totally_different_manifest_name
+version: "0.1.0"
+description: "Adversarial fixture: directory is 'mismatched_name_plugin' but plugin.yaml declares a different name."
+provides_tools:
+  - mismatch_probe

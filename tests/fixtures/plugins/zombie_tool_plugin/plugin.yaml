@@ -1,0 +1,5 @@
+name: zombie_tool_plugin
+version: "0.1.0"
+description: "Adversarial fixture: registers a tool, then raises before register() returns."
+provides_tools:
+  - zombie_tool

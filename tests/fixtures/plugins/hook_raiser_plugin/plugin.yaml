@@ -1,0 +1,5 @@
+name: hook_raiser_plugin
+version: "0.1.0"
+description: "Adversarial fixture: a post_tool_call hook that always raises."
+provides_hooks:
+  - post_tool_call
