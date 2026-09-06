@@ -11,6 +11,16 @@ streaming deadlines, quota probes and eight vendors' OAuth. What the compression
 actually calls is nine names, so this module provides those and resolves the client
 through the core's own provider and credential seams.
 
+It also carries three per-host header builders that have nothing to do with the
+auxiliary model and everything to do with living in the module that replaces upstream's
+(see the section at the bottom). Sizing this seam by its *main* caller is what left them
+out at first: ``agent_init`` and ``client_lifecycle`` reach for them by name, only when a
+base URL matches their host, so nothing failed until someone built an agent against one
+of those vendors -- ``AIAgent(base_url="https://openrouter.ai/api/v1")`` raised
+``AttributeError`` while 525 tests stayed green. Covered now by
+``tests/test_provider_hosts.py``, which constructs an agent against every host in both
+tables.
+
 Configure the auxiliary model under ``auxiliary`` in configuration -- either one
 setting for everything::
 
@@ -35,12 +45,16 @@ import re
 from contextvars import ContextVar, Token
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from hermes_core import __version__
 from hermes_core.providers.base import OMIT_TEMPERATURE  # noqa: F401 -- re-exported
 from hermes_core.seams.config import cfg_get, load_config_readonly
 
 logger = logging.getLogger("hermes_core.auxiliary")
 
 __all__ = [
+    "build_or_headers",
+    "build_nvidia_nim_headers",
+    "_AI_GATEWAY_HEADERS",
     "AuxiliaryExplicitCancellation",
     "get_text_auxiliary_client",
     "call_llm",
@@ -607,3 +621,80 @@ def aux_stream_deadline(*_args: Any, **_kwargs: Any) -> Iterator[None]:
     non-streaming call, which is what compression makes.
     """
     yield
+
+
+# -- Per-host default headers ---------------------------------------------------------
+#
+# Not auxiliary-model code at all: these are attribution and cache-control headers the
+# *main* client sends, and they live here only because upstream filed them in the module
+# this seam replaces. Two tables reach for them --
+# ``agent_init._HOST_DEFAULT_HEADERS`` and ``client_lifecycle._ROUTE_DEFAULT_HEADERS`` --
+# each entry gated on a base-URL host match, so nothing resolves any of these until a
+# host points an agent at that vendor. That is why their absence stayed invisible: the
+# lift's import check proved every module imports, which was true and beside the point.
+
+#: OpenRouter app attribution, sent on every request. ``X-Title`` is what their dashboard
+#: reads, so changing it changes how this core appears in a user's usage breakdown.
+_OR_HEADERS_BASE = {
+    "HTTP-Referer": "https://hermes-agent.nousresearch.com",
+    "X-Title": "Hermes Agent",
+    "X-OpenRouter-Categories": "productivity,cli-agent",
+}
+
+#: Vercel AI Gateway attribution (``HTTP-Referer`` becomes referrerUrl, ``X-Title``
+#: appName). Also sent to api.kimi.com, which upstream routes through the same entry.
+_AI_GATEWAY_HEADERS = {
+    "HTTP-Referer": "https://hermes-agent.nousresearch.com",
+    "X-Title": "Hermes Agent",
+    "User-Agent": f"HermesAgent/{__version__}",
+}
+
+#: NVIDIA NIM cloud billing attribution. Host-gated because ``NVIDIA_BASE_URL`` may point
+#: at a locally hosted NIM, which must not be told it is cloud traffic.
+_NVIDIA_NIM_CLOUD_HEADERS = {"X-BILLING-INVOKE-ORIGIN": "HermesAgent"}
+
+
+def build_or_headers(or_config: Optional[dict] = None) -> dict:
+    """OpenRouter headers, plus response-cache headers when the host enabled them.
+
+    Precedence is env > config > default: ``HERMES_OPENROUTER_CACHE`` overrides
+    ``openrouter.response_cache``, and ``HERMES_OPENROUTER_CACHE_TTL`` (1-86400 seconds)
+    overrides ``openrouter.response_cache_ttl``. ``or_config=None`` reads configuration
+    through the core's own seam, so a host that never touched OpenRouter settings gets
+    plain attribution headers and nothing else.
+    """
+    headers = dict(_OR_HEADERS_BASE)
+    if or_config is None:
+        try:
+            or_config = load_config_readonly().get("openrouter", {})
+        except Exception:
+            # Attribution must not depend on configuration being readable: a broken
+            # config file should not stop a request that would otherwise work.
+            or_config = {}
+    env_cache = os.environ.get("HERMES_OPENROUTER_CACHE", "").strip().lower()
+    enabled = (
+        env_cache in {"1", "true", "yes", "on"}
+        if env_cache
+        else bool(or_config.get("response_cache", False))
+    )
+    if not enabled:
+        return headers
+    headers["X-OpenRouter-Cache"] = "true"
+    env_ttl = os.environ.get("HERMES_OPENROUTER_CACHE_TTL", "").strip()
+    if env_ttl:
+        if env_ttl.isdigit() and 1 <= int(env_ttl) <= 86400:
+            headers["X-OpenRouter-Cache-TTL"] = str(int(env_ttl))
+    else:
+        ttl = or_config.get("response_cache_ttl", 300)
+        if isinstance(ttl, (int, float)) and 1 <= ttl <= 86400:
+            headers["X-OpenRouter-Cache-TTL"] = str(int(ttl))
+    return headers
+
+
+def build_nvidia_nim_headers(base_url: Optional[str]) -> dict:
+    """NVIDIA NIM cloud attribution headers, but only for integrate.api.nvidia.com."""
+    from hermes_core.utils import base_url_host_matches
+
+    if base_url_host_matches(str(base_url or ""), "integrate.api.nvidia.com"):
+        return dict(_NVIDIA_NIM_CLOUD_HEADERS)
+    return {}

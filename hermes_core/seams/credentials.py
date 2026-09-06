@@ -268,7 +268,9 @@ def get_credential_source() -> CredentialSource:
     configure itself hands its API key to every other tenant in the process.
     """
     active = _active.get_active()
-    if active is not None:
+    if active is not None and active.credentials is not None:
+        # Unset on the context means "fall through to the process-wide default", so a
+        # host can activate a context that carries only `extras`.
         return active.credentials
     return _source
 

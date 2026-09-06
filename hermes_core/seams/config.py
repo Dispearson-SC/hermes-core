@@ -163,7 +163,9 @@ def get_config_source() -> ConfigSource:
     iteration -- so this stays one ContextVar read and an attribute access.
     """
     active = _active.get_active()
-    if active is not None:
+    if active is not None and active.config is not None:
+        # Unset on the context means "fall through to the process-wide default", so a
+        # host can activate a context that carries only `extras`.
         return active.config
     return _source
 

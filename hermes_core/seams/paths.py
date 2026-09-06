@@ -116,7 +116,10 @@ def get_workspace() -> Workspace:
     and every existing caller -- working untouched.
     """
     active = _active.get_active()
-    if active is not None:
+    if active is not None and active.workspace is not None:
+        # A context may leave this unset -- a single-tenant host that configured the
+        # ports once at startup and only varies `extras` per request. Unset means "fall
+        # through", not "no workspace", so the process-wide default still answers.
         return active.workspace
     return _workspace
 

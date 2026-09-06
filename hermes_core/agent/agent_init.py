@@ -970,7 +970,7 @@ _HOST_DEFAULT_HEADERS: List[tuple[str, Callable[[Any, str], Dict[str, str]]]] = 
     ("api.kimi.com", lambda _k, _b: {"User-Agent": "claude-code/0.1.0"}),
     ("portal.qwen.ai", _lazy_headers("hermes_core.agent.client_lifecycle", "_qwen_portal_headers")),
     ("chatgpt.com", _lazy_headers("hermes_core.agent.codex_headers", "codex_cloudflare_headers", pass_key=True)),
-    ("x.ai", _lazy_headers("tools.xai_http", "hermes_xai_default_headers")),
+    ("x.ai", _lazy_headers("hermes_core.tools.xai_http", "hermes_xai_default_headers")),
 ]
 
 

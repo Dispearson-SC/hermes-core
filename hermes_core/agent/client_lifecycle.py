@@ -46,7 +46,7 @@ _ROUTE_DEFAULT_HEADERS = (
     ("chatgpt.com", lambda self, url: _lazy_attr("hermes_core.agent.codex_headers", "codex_cloudflare_headers")(
         self._client_kwargs.get("api_key", ""), base_url=url)),
     # Covers provider=xai and provider=xai-oauth (api.x.ai).
-    ("x.ai", lambda self, url: _lazy_attr("tools.xai_http", "hermes_xai_default_headers")()),
+    ("x.ai", lambda self, url: _lazy_attr("hermes_core.tools.xai_http", "hermes_xai_default_headers")()),
 )
 
 

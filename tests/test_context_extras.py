@@ -272,3 +272,63 @@ def test_the_extras_reader_returns_a_copy_not_the_contexts_own_mapping():
 
 def test_the_extras_reader_is_empty_with_no_context():
     assert _active.get_tool_extras() == {}
+
+
+# -- a context that carries only extras ----------------------------------------------
+#
+# The single-tenant shape: ports configured once at startup, only host dependencies vary
+# per request. Requiring all four fields made that host restate its own startup
+# configuration on every request just to pass `extras` -- which is how a rarely-changed
+# value ends up copied into a request handler and quietly drifts from the real one.
+
+def test_a_context_can_carry_extras_and_nothing_else(recording_tool):
+    from hermes_core.seams.context import AgentContext
+
+    with AgentContext(extras={"repo": "R"}).activate():
+        run_one_tool_turn()
+
+    assert recording_tool[0]["repo"] == "R"
+
+
+def test_an_unset_port_falls_through_to_the_process_wide_default():
+    """Unset means *fall through*, not "no workspace" -- the difference between a host
+    that configured once at startup and a host that is broken."""
+    from hermes_core.seams.config import load_config
+    from hermes_core.seams.context import AgentContext
+    from hermes_core.seams.credentials import resolve_credentials
+    from hermes_core.seams.paths import get_workspace
+
+    outside = (get_workspace(), load_config(), resolve_credentials("openai").api_key)
+
+    with AgentContext(extras={"repo": "R"}).activate():
+        inside = (get_workspace(), load_config(), resolve_credentials("openai").api_key)
+
+    assert inside == outside
+
+
+def test_one_port_can_be_overridden_while_the_others_fall_through():
+    """The mixed case, which is the reason this is per-field rather than all-or-nothing:
+    a tenant that needs its own credentials but shares everything else."""
+    from hermes_core.seams.context import AgentContext
+    from hermes_core.seams.credentials import StaticCredentials, resolve_credentials
+    from hermes_core.seams.paths import get_workspace
+
+    outside_workspace = get_workspace()
+
+    with AgentContext(credentials=StaticCredentials("key-tenant")).activate():
+        assert resolve_credentials("openai").api_key == "key-tenant"
+        assert get_workspace() is outside_workspace
+
+    assert resolve_credentials("openai").api_key == "key-default"
+
+
+def test_a_fully_specified_context_still_overrides_everything():
+    """The multi-tenant shape must not have regressed to falling through."""
+    from hermes_core.seams.config import load_config
+    from hermes_core.seams.credentials import resolve_credentials
+
+    context = make_context()
+
+    with context.activate():
+        assert load_config()["model"]["default"] == "fake-model"
+        assert resolve_credentials("openai").api_key == "key-ctx"

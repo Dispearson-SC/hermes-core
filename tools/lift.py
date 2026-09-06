@@ -299,6 +299,18 @@ MANIFEST: list[str] = [
     # launches arbitrary third-party packages.
     "tools/osv_check.py",
     "tools/ansi_strip.py",
+    # Only `hermes_xai_default_headers` is wanted, reached from the two per-host header
+    # tables through a lazy import keyed by the string "tools.xai_http".
+    #
+    # Worth understanding, because the absence cost twice: the string rewriter below
+    # deliberately refuses to rewrite a dotted path unless its module is in *this list*,
+    # so a missing manifest entry does not merely omit a module -- it also leaves every
+    # string reference to it pointing at the upstream path. Both halves of
+    # `AttributeError: no attribute 'hermes_xai_default_headers'` came from this one
+    # line being absent, and adding it fixes both without a patch.
+    #
+    # Everything the module imports is deferred, so it costs one module and no closure.
+    "tools/xai_http.py",
     "tools/mcp_schema_cache.py",
     "tools/mcp_tool_common.py",
     "tools/mcp_tool_errors.py",
@@ -820,6 +832,38 @@ def get_active_env(task_id=None):
         ),
     ],
 }
+
+
+def _assert_no_shadowed_patch_keys() -> None:
+    """Fail if a file is listed twice in the ``PATCHES`` literal above.
+
+    Python keeps the last of two duplicate keys, so a second entry for a file silently
+    discards every patch in the first -- and it discards them *quietly*: the lift still
+    exits 0, the surviving patch still reports "patched", and the lost one is simply
+    never applied. Nothing else here would notice, because a patch that is not in the
+    dict is not a patch that failed to apply.
+
+    Nearly cost this file the ``agent_init`` session-store default while fixing the xAI
+    header path. Counted by re-reading the source, since by the time the dict exists the
+    duplicate is already gone.
+    """
+    import re
+
+    source = Path(__file__).read_text(encoding="utf-8")
+    body = source.split("PATCHES: dict[str, list[tuple[str, str, str]]] = {", 1)[1]
+    body = body.split("\ndef _assert_no_shadowed_patch_keys", 1)[0]
+    keys = re.findall(r'^    "([^"]+)": \[', body, flags=re.MULTILINE)
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    if duplicates:
+        raise SystemExit(
+            f"PATCHES lists {', '.join(duplicates)} more than once. Python keeps only the "
+            f"last entry, so the earlier patches would be dropped without a word. Merge "
+            f"them into one list."
+        )
+
+
+_assert_no_shadowed_patch_keys()
+
 
 # Top-level functions removed from lifted modules, by name.
 #

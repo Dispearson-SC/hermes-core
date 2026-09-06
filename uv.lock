@@ -397,7 +397,7 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=0.39,<1" },
     { name = "concurrent-log-handler", specifier = ">=0.9,<1" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.4,<3" },
-    { name = "openai", specifier = ">=1.40,<2" },
+    { name = "openai", specifier = ">=1.40,<4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23,<1" },
     { name = "python-dotenv", specifier = ">=1,<2" },

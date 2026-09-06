@@ -12,7 +12,21 @@ dependencies = [
     # The chat-completions transport speaks the OpenAI wire format and uses the SDK's
     # types. It is the only hard dependency the core has acquired so far; everything
     # else that has moved across runs on the standard library.
-    "openai>=1.40,<2",
+    # Upper bound widened from <2 after measuring, not after reasoning: the full suite
+    # was run on 1.x, 2.54 and 3.8, green on all three. It matters because the original
+    # <2 made this core uninstallable beside anything current -- langchain-openai asks
+    # for >=2.45 -- so a host migrating onto it could not run both agents at once.
+    #
+    # What the pin protects is small: `OpenAI`, three exception classes, and
+    # `chat.completions.create` / `responses.create` / `close` / `is_closed`. The two
+    # private touches (`_mounts`, `_custom_headers`) are read through `getattr(..., None)`
+    # and degrade rather than raise. `is_closed` is already handled as both a property
+    # and a method, because httpx and the SDK disagree.
+    #
+    # What the suite does NOT prove: a live HTTP round trip on 2.x or 3.x. Every test
+    # runs against the scripted fake, and the last real-endpoint run (6/6 MiniMax models)
+    # was on 1.x. The bound stays closed at <4 for that reason.
+    "openai>=1.40,<4",
     # Lifted utility and credential modules read YAML.
     "pyyaml>=6,<7",
     # Log rotation that is safe when several processes share a file -- a real case for

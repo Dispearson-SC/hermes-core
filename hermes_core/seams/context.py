@@ -71,17 +71,36 @@ class AgentContext:
     Frozen, because a context is identity: a tenant's settings should not change under
     an agent mid-turn. :meth:`derive` makes a modified copy for the cases that need one.
 
-    ``session_store`` is optional and sits slightly apart from the other three. Those
-    are read through module-level seam functions by lifted code that cannot be given an
-    argument, which is exactly why they need a context to be found through. The store
-    is already passed to ``AIAgent(session_db=...)`` directly, so it is carried here for
-    completeness -- so a host can hand one object around instead of four -- rather than
-    because anything looks it up.
+    Every field is optional, and they are optional for two different reasons.
+
+    ``workspace``, ``config`` and ``credentials`` are read through module-level seam
+    functions by lifted code that cannot be handed an argument -- which is exactly why
+    they need a context to be *found* through. Unset means the seam falls through to
+    whatever ``set_workspace`` / ``set_config_source`` / ``set_credential_source``
+    installed process-wide.
+
+    ``session_store`` sits apart: it is already passed to ``AIAgent(session_db=...)``
+    directly, so it is carried here for completeness -- a host hands one object around
+    instead of four -- rather than because anything looks it up.
     """
 
-    workspace: Workspace
-    config: ConfigSource
-    credentials: CredentialSource
+    #: The three ports read through module-level seam functions. Each is optional, and
+    #: leaving one unset means *fall through to the process-wide default*, not "no
+    #: workspace" -- so the two shapes a host actually has both work:
+    #:
+    #:     # multi-tenant: everything varies per tenant
+    #:     AgentContext(workspace=..., config=..., credentials=..., session_store=...)
+    #:
+    #:     # single-tenant: ports configured once at startup, only dependencies vary
+    #:     set_workspace(...); set_config_source(...); set_credential_source(...)
+    #:     AgentContext(extras={"repo": repo, "actor": user.id})
+    #:
+    #: Requiring all three made the second shape restate its own startup configuration
+    #: on every request just to pass ``extras``, which is how a rarely-changed value
+    #: ends up copied into a request handler and quietly drifts.
+    workspace: Optional[Workspace] = None
+    config: Optional[ConfigSource] = None
+    credentials: Optional[CredentialSource] = None
     session_store: Optional[SessionStore] = None
 
     #: Optional label for logs and diagnostics. Never used for lookup or isolation --

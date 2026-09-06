@@ -160,9 +160,24 @@ are enough, no inheritance, no registration.
 | `SessionStore` | Where does the transcript live? | `InMemorySessionStore`, `SqliteSessionStore` |
 
 They can be installed process-wide (`set_workspace(...)`) for a single-agent process, or
-bundled into an `AgentContext` and activated per request. Prefer the context: the
-process-wide setters are service locators, so two tenants configured in one worker do
-not coexist — the second silently replaces the first, API key included.
+bundled into an `AgentContext` and activated per request. For two tenants in one worker,
+use the context: the process-wide setters are service locators, so the second tenant
+configured silently replaces the first, API key included.
+
+**Every `AgentContext` field is optional**, and an unset port means *fall through to the
+process-wide default* — not "no workspace". So both shapes work, and a single-tenant host
+does not have to restate its startup configuration on every request just to pass
+`extras`:
+
+```python
+# multi-tenant: everything varies per tenant
+AgentContext(workspace=..., config=..., credentials=..., session_store=...)
+
+# single-tenant: ports set once at startup, only dependencies vary per request
+set_workspace(...); set_config_source(...); set_credential_source(...)
+with AgentContext(extras={"repo": repo, "actor": user.id}).activate():
+    agent.run_conversation(text)
+```
 
 A context is an **isolation** boundary, not a **security** boundary. It stops tenants
 tripping over each other. It does not contain code that goes looking. Untrusted tenants
@@ -229,7 +244,9 @@ request, not just that one. Two helpers make that unnecessary:
 ```python
 from hermes_core import run_conversation_async, call_host_async
 
-# calling in: the turn runs on a worker thread, the loop keeps serving
+# calling in: the turn runs on a worker thread, the loop keeps serving.
+# This binds the host loop for the whole turn, so handlers can use call_host_async
+# with no further setup -- you do not wrap this in bind_host_loop.
 result = await run_conversation_async(agent, "hola", timeout=120)
 
 # calling out: a sync handler reaching the host's async services
@@ -248,9 +265,10 @@ entire point:
   deadlocks instantly if reached from the loop thread. `call_host_async` raises
   `HostLoopUnavailable` there instead of hanging.
 
-A host that drives the worker thread itself (Starlette's `run_in_threadpool`, an existing
-pool) uses `bind_host_loop` instead, and must bind **before** the work leaves the loop
-thread — a `ContextVar` is copied into a thread when the thread starts:
+`bind_host_loop` is for the *other* case only: a host that drives the worker thread
+itself (Starlette's `run_in_threadpool`, an existing pool). It must bind **before** the
+work leaves the loop thread — a `ContextVar` is copied into a thread when the thread
+starts, so a binding made inside the worker never reaches the handler:
 
 ```python
 with bind_host_loop():
