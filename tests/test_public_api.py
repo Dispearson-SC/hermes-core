@@ -94,6 +94,24 @@ def test_reaching_for_one_name_does_not_pull_in_the_rest():
     assert result.stdout.strip().splitlines()[-1] == "false"
 
 
+def test_the_declared_version_matches_the_one_the_package_reports():
+    """``pyproject.toml`` and ``__version__`` are two places, and they drift.
+
+    They are not cosmetic duplicates. ``__version__`` goes on the wire in the AI Gateway
+    ``User-Agent``, and it is what a host reads to decide whether a fix is present; the
+    pyproject value is what a pinned install actually resolves. A tag cut against a
+    package still calling itself the previous version is a fixed point that lies about
+    what it contains -- which is the failure this repository already shipped once, when
+    ``v0.0.1`` stayed pinned to a blocking dependency bug.
+    """
+    import tomllib
+    from pathlib import Path
+
+    pyproject = tomllib.loads((CORE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert pyproject["project"]["version"] == hermes_core.__version__
+
+
 def test_a_resolved_name_is_cached_as_a_real_attribute():
     """``__getattr__`` fires once; the second access is a plain lookup, not another
     import."""

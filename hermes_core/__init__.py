@@ -34,7 +34,7 @@ See EXTRACTION.md for what came across, what did not, and why.
 
 from typing import TYPE_CHECKING
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 #: Public name -> the module it lives in. This mapping *is* the contract; the lazy
 #: resolution below is only how it is delivered.

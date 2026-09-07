@@ -27,6 +27,37 @@ protocol-specific is an extra:
 | `mcp` | `mcp` | Using MCP servers — without it, MCP discovery is skipped, not broken |
 | `dev` | `pytest`, `pytest-asyncio` | Running this repository's tests |
 
+### Development and containers are different installs
+
+An editable path install is right while you are integrating: anything you have to patch
+or reach around to make the core work is a leak in *its* API and comes back as a fix
+here, and a pinned tag turns each of those into a release during the phase where they
+are expected.
+
+A container has no such path, and pinning a branch is not pinning. Declare both, and let
+the build pick:
+
+```toml
+# pyproject.toml
+dependencies = ["hermes-core @ git+https://github.com/…/hermes-core@v0.0.2"]
+
+[tool.uv.sources]
+hermes-core = { path = "../path/to/Core", editable = true }   # development only
+```
+
+```dockerfile
+RUN uv pip install --no-sources -r pyproject.toml
+```
+
+`--no-sources` ignores the `[tool.uv.sources]` block and resolves the git URL, so
+development keeps the editable checkout and the image resolves a fixed ref — one
+declaration, no vendoring, no second file. (Pattern contributed by the first host to
+containerise this core.)
+
+Pin a **tag**, not a branch, and not a commit if you can help it: a SHA is reproducible
+but says nothing in a diff about what it contains. If the repository is private, the
+build needs a credential — that is a deployment decision, not a packaging one.
+
 ## The shortest thing that works
 
 ```python

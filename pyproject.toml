@@ -1,6 +1,6 @@
 [project]
 name = "hermes-core"
-version = "0.0.1"
+version = "0.0.2"
 description = "The agent intelligence of Hermes Agent, extracted as an embeddable library."
 # Upper bound raised to <3.15 only after the suite was run on 3.14 -- not by editing the
 # number. It found a real break: `tools/daemon_pool.py` overrides a private CPython method
